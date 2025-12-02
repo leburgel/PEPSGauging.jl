@@ -1,9 +1,26 @@
 name = "BPAD"
 uuid = "36bca905-8295-4cda-b053-a76c0c61e6dd"
 authors = ["leburgel <lander.burgelman@gmail.com> and contributors"]
-version = "1.0.0-DEV"
+version = "0.1.0"
+
+[deps]
+ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
+OptimKit = "77e91f04-9b3b-57a6-a776-40b61faaebe0"
+PEPSKit = "52969e89-939e-4361-9b68-9bc7cde4bdeb"
+TensorKit = "07d1fe3e-3e46-537d-9eac-e9e13d0d4cec"
+Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
+
+[sources]
+PEPSKit = {rev = "bp_ad", url = "https://github.com/QuantumKitHub/PEPSKit.jl"}
 
 [compat]
+ChainRulesCore = "1.26.0"
+KrylovKit = "0.10.2"
+OptimKit = "0.4.1"
+PEPSKit = "0.7.0"
+TensorKit = "0.15.3"
+Zygote = "0.7.10"
 julia = "1.10"
 
 [extras]
