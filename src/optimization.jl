@@ -10,7 +10,7 @@ default_boundary_alg() = SimultaneousCTMRG(;
     alg = :simultaneous,
     tol = PEPSKit.Defaults.ctmrg_tol,
     maxiter = PEPSKit.Defaults.ctmrg_maxiter,
-    miniter = PEPSKit.Defaults.ctmrg_minter,
+    miniter = PEPSKit.Defaults.ctmrg_miniter,
     verbosity = PEPSKit.Defaults.ctmrg_verbosity,
 )
 
@@ -28,7 +28,7 @@ default_linesearch_alg() = HagerZhangLineSearch(;
     c₁ = 1.0e-4,
     c₂ = 1 - 1.0e-4,
     maxiter = PEPSKit.Defaults.ls_maxiter,
-    verbosity = PEPSKit.Defaults.ls_verbosity,
+    maxfg = PEPSKit.Defaults.ls_maxfg,
 )
 
 default_optimizer_alg() = LBFGS(
@@ -39,15 +39,103 @@ default_optimizer_alg() = LBFGS(
     linesearch = default_linesearch_alg(),
 )
 
+default_svd_alg() = SVDAdjoint(;
+    fwd_alg = (; alg = :sdd),
+    rrule_alg = (; alg = :full),
+)
+
+const GaugeEnv = Union{BPEnv, MCFEnv}
+
+function generate_gauge_preserving_costfunction(
+        operator::LocalOperator,
+        gauge_alg::Union{BeliefPropagation, MCF}, # these gauge using only the PEPS
+        gauge_gradient_alg,
+        svd_alg,
+        boundary_alg,
+        boundary_gradient_alg,
+        symmetrization,
+        gradnorms_unitcell = [],
+        times = [];
+        reuse_env = true,
+    )
+    function gp_costfun((peps, boundary_env, gauge_env))
+        start_time = time_ns()
+        E, gs = withgradient(peps) do ψ
+            ψg, _, gauge_env´ = hook_pullback(
+                gauge_fix, ψ, gauge_alg, gauge_env, svd_alg; alg_rrule = gauge_gradient_alg,
+            ) # the bamboozle
+            boundary_env′, = hook_pullback(
+                leading_boundary, boundary_env, ψg, boundary_alg;
+                alg_rrule = boundary_gradient_alg,
+            )
+            ignore_derivatives() do
+                reuse_env && (update!(boundary_env, boundary_env′); update!(gauge_env, gauge_env´))
+            end
+            return cost_function(ψg, boundary_env′, operator)
+        end
+        g = only(gs)  # `withgradient` returns tuple of gradients `gs`
+        symmetrize!(g, symmetrization)
+        push!(gradnorms_unitcell, norm.(g.A))
+        push!(times, (time_ns() - start_time) * 1.0e-9)
+        return E, g
+    end
+    return gp_costfun
+end
+
+# function generate_gauge_preserving_costfunction(
+#         operator::LocalOperator,
+#         gauge_alg::WTG, # this one uses an actual environment, so the steps are a bit different
+#         gauge_gradient_alg,
+#         svd_alg,
+#         boundary_alg,
+#         boundary_gradient_alg,
+#         symmetrization,
+#         gradnorms_unitcell = [],
+#         times = [];
+#         reuse_env = true,
+#     )
+#     function gp_costfun((peps, boundary_env, gauge_env))
+#         start_time = time_ns()
+#         E, gs = withgradient(peps) do ψ
+#             gt = gauge_env[2] # ignore the CTMRGEnv in first position
+#             pre_gauge_boundary_env, = hook_pullback(
+#                 leading_boundary, boundary_env, ψ, boundary_alg;
+#                 alg_rrule = boundary_gradient_alg,
+#             ) # the first bamboozle
+#             gauge_env´ = (pre_gauge_boundary_env, gt)
+#             ψg, _, gauge_env´´ = hook_pullback(
+#                 gauge_fix, ψ, gauge_alg, gauge_env´, svd_alg; alg_rrule = gauge_gradient_alg,
+#             ) # the second bamboozle
+#             boundary_env´ = gauge_env´´[1] # start from this one
+#             boundary_env´′, = hook_pullback(
+#                 leading_boundary, boundary_env´, ψg, boundary_alg;
+#                 alg_rrule = boundary_gradient_alg,
+#             )
+#             ignore_derivatives() do
+#                 reuse_env && (update!(boundary_env, boundary_env´′); update!(gauge_env, gauge_env´´))
+#             end
+#             return cost_function(ψg, boundary_env´′, operator)
+#         end
+#         g = only(gs)  # `withgradient` returns tuple of gradients `gs`
+#         symmetrize!(g, symmetrization)
+#         push!(gradnorms_unitcell, norm.(g.A))
+#         push!(times, (time_ns() - start_time) * 1.0e-9)
+#         return E, g
+#     end
+#     return gp_costfun
+# end
+
 # just because the original one is not general enough...
 function gauge_preserving_fixedpoint(
         operator,
         peps0::InfinitePEPS,
         boundary_env0::CTMRGEnv,
-        gauge_env0::BPEnv; # the bamboozle
+        gauge_env0::GaugeEnv; # the bamboozle
         gauge_alg = default_gauge_alg(),
+        gauge_gradient_alg = nothing,
+        svd_alg = default_svd_alg(),
         boundary_alg = default_boundary_alg(),
-        gradient_alg = default_gradient_alg(),
+        boundary_gradient_alg = default_gradient_alg(),
         optimizer_alg = default_optimizer_alg(),
         reuse_env = PEPSKit.Defaults.reuse_env,
         symmetrization = nothing,
@@ -72,30 +160,22 @@ function gauge_preserving_fixedpoint(
     peps0 = peps_normalize(peps0)
 
     # optimize operator cost function
+    gp_costfun = generate_gauge_preserving_costfunction(
+        operator,
+        gauge_alg,
+        gauge_gradient_alg,
+        svd_alg,
+        boundary_alg,
+        boundary_gradient_alg,
+        symmetrization,
+        gradnorms_unitcell,
+        times,
+    )
+
     (peps_final, env_final), cost_final, ∂cost, numfg, convergence_history = optimize(
-        (peps0, boundary_env0, gauge_env0), optimizer_alg;
+        gp_costfun, (peps0, boundary_env0, gauge_env0), optimizer_alg;
         retract, inner = real_inner, finalize!, (transport!) = (gp_peps_transport!),
-    ) do (peps, boundary_env, gauge_env)
-        start_time = time_ns()
-        E, gs = withgradient(peps) do ψ
-            ψg, _, gauge_env´ = hook_pullback(
-                gauge_fix, ψ, gauge_alg, gauge_env; alg_rrule = nothing, # TODO: support non-trivial gradient alg
-            ) # the bamboozle
-            boundary_env′, = hook_pullback(
-                leading_boundary, boundary_env, ψg, boundary_alg;
-                alg_rrule = gradient_alg,
-            )
-            ignore_derivatives() do
-                reuse_env && (update!(boundary_env, boundary_env′); update!(gauge_env, gauge_env´))
-            end
-            return cost_function(ψg, boundary_env′, operator)
-        end
-        g = only(gs)  # `withgradient` returns tuple of gradients `gs`
-        symmetrize!(g, symmetrization)
-        push!(gradnorms_unitcell, norm.(g.A))
-        push!(times, (time_ns() - start_time) * 1.0e-9)
-        return E, g
-    end
+    )
 
     info = (;
         last_gradient = ∂cost,

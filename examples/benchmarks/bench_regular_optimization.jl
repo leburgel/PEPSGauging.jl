@@ -10,13 +10,15 @@ using TensorKit
 using OptimKit
 using KrylovKit
 using JLD2
+using LinearAlgebra
 using BPAD
 
-include(joinpath(@__DIR__, "tools.jl"))
+include(joinpath(pwd(), "tools.jl"))
 
 using PEPSKit: peps_normalize, BeliefPropagation, gauge_fix
 
-sd = 1234 # trial 1
+sd = 12345678 # trial 3
+BLAS.set_num_threads(4) # be a bit conservative
 
 # SETUP
 # -----
@@ -31,10 +33,6 @@ Jx = -1.0
 Jy = 1.0
 Jz = -1.0
 
-gauge_tol = 1.0e-8
-gauge_maxiter = 500
-gauge_verbosity = 2
-
 boundary_tol = 1.0e-10
 boundary_maxiter = 500
 boundary_verbosity = 2
@@ -44,7 +42,7 @@ fpgrad_verbosity = 2
 
 optim_tol = 1.0e-8
 optim_verbosity = 3
-optim_maxiter = 200
+optim_maxiter = 600
 
 H = heisenberg_XYZ(InfiniteSquare(); Jx, Jy, Jz)
 
@@ -52,12 +50,6 @@ P = H.lattice
 Vpeps = fill(ComplexSpace(D), size(P)...)
 Venv = fill(ComplexSpace(chi), size(P)...)
 Venv1 = fill(ComplexSpace(chi1), size(P)...)
-
-gauge_alg = BeliefPropagation(;
-    tol = gauge_tol,
-    maxiter = gauge_maxiter,
-    verbosity = gauge_verbosity,
-)
 
 boundary_alg = SimultaneousCTMRG(;
     alg = :simultaneous,
@@ -78,8 +70,8 @@ optimizer_alg = LBFGS(
 )
 
 
-# NOGAUGE
-# -------
+# MAIN
+# ----
 
 Random.seed!(sd)
 
@@ -91,12 +83,15 @@ peps0 = peps_normalize(symmetrize!(InfinitePEPS(randn, T, P, Vpeps), symmetrizat
 env0, = leading_boundary(CTMRGEnv(randn, T, peps0, Venv), peps0, boundary_alg)
 env1 = CTMRGEnv(randn, T, peps0, Venv1)
 
-nogauge_finalize! = nogauge_energy_tracker(es0, es1, ngs, H, env1; boundary_alg)
-
 fname = joinpath(
-    @__DIR__,
+    pwd(),
     "results",
-    generate_heisenberg_filename(D, chi, chi1, false, symmetrization, Jx, Jy, Jz),
+    generate_heisenberg_filename(D, chi, chi1, nothing, symmetrization, Jx, Jy, Jz),
+)
+
+nogauge_finalize! = nogauge_energy_tracker(
+    es0, es1, ngs, H, env1;
+    boundary_alg, save_iter = 10, fname,
 )
 
 peps, env, E, = fixedpoint(
@@ -107,49 +102,6 @@ peps, env, E, = fixedpoint(
     reuse_env,
     symmetrization,
     (finalize!) = (nogauge_finalize!),
-)
-
-jldsave(
-    fname;
-    peps,
-    env,
-    es0,
-    es1,
-    ngs,
-)
-
-
-# GAUGE
-# -----
-
-Random.seed!(sd)
-
-es0 = T[]
-es1 = T[]
-ngs = real(T)[]
-
-peps0 = peps_normalize(symmetrize!(InfinitePEPS(randn, T, P, Vpeps), symmetrization))
-peps0, weights, bp_env0 = gauge_fix(peps0, gauge_alg)
-ctmrg_env0, = leading_boundary(CTMRGEnv(randn, T, peps0, Venv), peps0, boundary_alg)
-ctmrg_env1 = CTMRGEnv(randn, T, peps0, Venv1)
-
-gauge_finalize! = gauge_energy_tracker(es0, es1, ngs, H, ctmrg_env1; boundary_alg, gauge_alg)
-
-fname = joinpath(
-    @__DIR__,
-    "results",
-    generate_heisenberg_filename(D, chi, chi1, true, symmetrization, Jx, Jy, Jz),
-)
-
-peps, ctmrg_env, E, = gauge_preserving_fixedpoint(
-    H, peps0, ctmrg_env0, bp_env0;
-    gauge_alg,
-    boundary_alg,
-    gradient_alg,
-    optimizer_alg,
-    reuse_env,
-    symmetrization,
-    (finalize!) = (gauge_finalize!),
 )
 
 jldsave(

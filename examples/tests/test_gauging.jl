@@ -1,6 +1,3 @@
-using Pkg: Pkg
-Pkg.activate(@__DIR__)
-
 using Revise
 
 using Random
