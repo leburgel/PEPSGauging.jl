@@ -11,12 +11,12 @@ using OptimKit
 using KrylovKit
 using JLD2
 using LinearAlgebra
-using BPAD
+using PEPSGauging
 
 include(joinpath(pwd(), "tools.jl"))
 
 using PEPSKit: peps_normalize, BeliefPropagation, gauge_fix
-using BPAD: MCF, mcf_environment
+using PEPSGauging: MCF, mcf_environment
 
 sd = 1234 # trial 1
 # sd = 123456 # trial 2
@@ -49,9 +49,9 @@ boundary_verbosity = 2
 fpgrad_tol = 1.0e-8
 fpgrad_verbosity = 2
 
-optim_tol = 1.0e-8
+optim_tol = 1.0e-7
 optim_verbosity = 3
-optim_maxiter = 600
+optim_maxiter = 1200
 
 H = heisenberg_XYZ(lattice; Jx, Jy, Jz)
 

@@ -1,3 +1,4 @@
+using Accessors
 using TensorKit
 using PEPSKit
 using MPSKit
@@ -5,7 +6,9 @@ using VectorInterface
 using CairoMakie
 using OptimKit
 using Zygote
-using BPAD: generate_gauge_preserving_costfunction
+using LinearAlgebra
+using JLD2
+using PEPSGauging: generate_gauge_preserving_costfunction
 
 using PEPSKit: hook_pullback
 
@@ -14,10 +17,11 @@ function nogauge_energy_tracker(
         boundary_alg = SimultaneousCTMRG(), save_iter = 10, fname = "result.jld2"
     ) where {T <: Number, TR <: Real}
     env1 = deepcopy(env1)
+    extra_boundary_alg = @set boundary_alg.tol = boundary_alg.tol * 1.0e4 # relax this one a bit, only need the energy
     function finalize!(x, E, g, numiter)
-        env0´, = leading_boundary(x[2], x[1], boundary_alg) # make sure this is an environment
+        env0´, = leading_boundary(x[2], x[1], boundary_alg)
         e0 = MPSKit.expectation_value(x[1], H, env0´)
-        env1´, = leading_boundary(env1, x[1], boundary_alg) # make sure this is an environment
+        env1´, = leading_boundary(env1, x[1], extra_boundary_alg)
         e1 = MPSKit.expectation_value(x[1], H, env1´)
         PEPSKit.update!(env1, env1´)
         ng = sqrt(PEPSKit.real_inner(x, g, g))
@@ -45,11 +49,12 @@ function gauge_energy_tracker(
         save_iter = 10, fname = "result.jld2"
     ) where {T <: Number, TR <: Real}
     env1 = deepcopy(env1)
+    extra_boundary_alg = @set boundary_alg.tol = boundary_alg.tol * 1.0e4 # relax this one a bit, only need the energy
     function finalize!(x, E, g, numiter)
         peps´, = gauge_fix(x[1], gauge_alg) # gauge fix first
-        env0´, = leading_boundary(x[2], peps´, boundary_alg) # make sure this is an environment
+        env0´, = leading_boundary(x[2], peps´, boundary_alg)
         e0 = MPSKit.expectation_value(peps´, H, env0´)
-        env1´, = leading_boundary(env1, peps´, boundary_alg) # make sure this is an environment
+        env1´, = leading_boundary(env1, peps´, extra_boundary_alg)
         e1 = MPSKit.expectation_value(peps´, H, env1´)
         PEPSKit.update!(env1, env1´)
         ng = sqrt(PEPSKit.real_inner(x, g, g))
@@ -88,11 +93,11 @@ end
 
 # function gp_peps_fg(
 #         H;
-#         gauge_alg = BPAD.default_gauge_alg(),
+#         gauge_alg = PEPSGauging.default_gauge_alg(),
 #         gauge_gradient_alg = nothing,
-#         svd_alg = BPAD.default_svd_alg(),
-#         boundary_alg = BPAD.default_boundary_alg(),
-#         boundary_gradient_alg = BPAD.default_gradient_alg(),
+#         svd_alg = PEPSGauging.default_svd_alg(),
+#         boundary_alg = PEPSGauging.default_boundary_alg(),
+#         boundary_gradient_alg = PEPSGauging.default_gradient_alg(),
 #         symmetrization = nothing,
 #     )
 #     function fg((peps, boundary_env, gauge_env))
@@ -118,13 +123,13 @@ function test_peps_gradient(
         boundary_env,
         gauge_env,
         H;
-        gauge_alg = BPAD.default_gauge_alg(),
+        gauge_alg = PEPSGauging.default_gauge_alg(),
         gauge_gradient_alg = nothing,
-        svd_alg = BPAD.default_svd_alg(),
-        boundary_alg = BPAD.default_boundary_alg(),
-        boundary_gradient_alg = BPAD.default_gradient_alg(),
+        svd_alg = PEPSGauging.default_svd_alg(),
+        boundary_alg = PEPSGauging.default_boundary_alg(),
+        boundary_gradient_alg = PEPSGauging.default_gradient_alg(),
         symmetrization = nothing,
-        retract = BPAD.gp_peps_retract,
+        retract = PEPSGauging.gp_peps_retract,
         inner = PEPSKit.real_inner,
         steps = LinRange(-0.01, 0.1, 12),
         doplot = false,
@@ -165,8 +170,8 @@ end
 # TODO: should be able to get this directly from PEPSKit somehow...
 function regular_peps_fg(
         H;
-        boundary_alg = BPAD.default_boundary_alg(),
-        gradient_alg = BPAD.default_gradient_alg(),
+        boundary_alg = PEPSGauging.default_boundary_alg(),
+        gradient_alg = PEPSGauging.default_gradient_alg(),
         symmetrization = nothing,
     )
     function fg((peps, env))
@@ -187,8 +192,8 @@ function test_regular_peps_gradient(
         peps,
         env,
         H;
-        boundary_alg = BPAD.default_boundary_alg(),
-        gradient_alg = BPAD.default_gradient_alg(),
+        boundary_alg = PEPSGauging.default_boundary_alg(),
+        gradient_alg = PEPSGauging.default_gradient_alg(),
         symmetrization = nothing,
         retract = PEPSKit.peps_retract,
         inner = PEPSKit.real_inner,
@@ -224,4 +229,84 @@ function test_regular_peps_gradient(
     end
 
     return f0, g0, alphas, fs, dfs1, dfs2, fig
+end
+
+function set_blas_threads(args::AbstractDict)
+    nbt = args["blas_threads"]
+    return set_blas_threads(nbt)
+end
+function set_blas_threads(nbt::Int)
+    return if :MKL in filter((x) -> typeof(getfield(Main, x)) <: Module && x ≠ :Main, names(Main, imported = true))
+        MKL.set_num_threads(nbt)
+    else
+        BLAS.set_num_threads(nbt)
+    end
+end
+
+# IO
+
+function update_peps_result(fname::String, x::Tuple{<:InfinitePEPS, <:CTMRGEnv})
+    # get the histories
+    fs, ngs, algs = jldopen(fname, "r") do file
+        file["fs"], file["ngs"], file["algs"]
+    end
+    # combine these with the new tensors
+    peps, env = x
+    jldsave(fname; peps, env, fs, ngs, algs)
+    return nothing
+end
+
+function generate_iterative_finalize(
+        fname::String, (og_finalize!) = OptimKit._finalize!; frequency = 10, algs = (;)
+    )
+    # initialize histories
+    fs = Float64[]
+    ngs = Float64[]
+    # initialize file if it does not exist
+    if !isfile(fname)
+        jldsave(fname; fs, ngs, algs)
+    end
+    # save every few iterations
+    return function finalize!(x::Tuple, f, g, iter)
+        push!(fs, f)
+        push!(ngs, norm(g))
+        x, f, g = og_finalize!(x, f, g, iter)
+        if mod(iter, frequency) == 0
+            # save
+            @info "Saving checkpoint"
+            peps, env = x
+            jldsave(fname; peps, env, fs, ngs, algs)
+        end
+        return x, f, g
+    end
+end
+
+function generate_reshuffling_finalize(
+        boundary_alg, trunc::TruncationScheme; frequency = 5, iters = 5, verbosity = 3
+    )
+    reshuffling_boundary_alg = @set boundary_alg.projector_alg.trunc = trunc
+    @reset reshuffling_boundary_alg.maxiter = iters
+    @reset reshuffling_boundary_alg.miniter = iters
+    @reset reshuffling_boundary_alg.verbosity = verbosity
+    function reshuffling_finalize!(x, f, g, iter)
+        peps, env = x
+        # reshuffle environment
+        if mod(iter, frequency) == 0
+            env, = leading_boundary(env, peps, ctm_alg_shuffle)
+        end
+        return (peps, env), f, g
+    end
+
+    return reshuffling_finalize!
+end
+
+function load_result(fname::String, ::PEPSKit.LocalOperator)
+    @info "Loading $(fname)"
+    isfile(fname) || return nothing, nothing
+    return jldopen(fname, "r") do file
+        peps = read(file, "peps")
+        isnothing(peps) && return nothing, nothing
+        env = read(file, "env")
+        return peps, env
+    end
 end

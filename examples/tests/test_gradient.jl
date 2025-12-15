@@ -12,7 +12,7 @@ using OptimKit
 using KrylovKit
 using Zygote
 using JLD2
-using BPAD
+using PEPSGauging
 
 using PEPSKit: peps_normalize, BeliefPropagation, gauge_fix
 
@@ -125,7 +125,7 @@ _, g0_before_gauge, _, _, dfs1_before_gauge, dfs2_before_gauge, = test_peps_grad
 
 ## Test after some optimization steps
 
-data = load("problem_peps.jld2")
+data = load(joinpath(pwd(), "tests", "problem_peps.jld2"))
 peps = data["peps"]
 ctmrg_env = data["ctmrg_env"]
 H = data["H"]

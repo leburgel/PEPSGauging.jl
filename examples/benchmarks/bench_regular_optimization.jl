@@ -11,7 +11,7 @@ using OptimKit
 using KrylovKit
 using JLD2
 using LinearAlgebra
-using BPAD
+using PEPSGauging
 
 include(joinpath(pwd(), "tools.jl"))
 

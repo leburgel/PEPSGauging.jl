@@ -1,4 +1,4 @@
-module BPAD
+module PEPSGauging
 
 using TensorKit
 using PEPSKit

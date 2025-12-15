@@ -1,6 +1,6 @@
-using BPAD
+using PEPSGauging
 using Test
 
-@testset "BPAD.jl" begin
+@testset "PEPSGauging.jl" begin
     # Write your tests here.
 end

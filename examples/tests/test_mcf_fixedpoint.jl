@@ -13,10 +13,10 @@ using OptimKit
 using KrylovKit
 using Zygote
 using JLD2
-using BPAD
+using PEPSGauging
 
 using PEPSKit: peps_normalize, BeliefPropagation, gauge_fix
-using BPAD: MCF, mcf_environment
+using PEPSGauging: MCF, mcf_environment
 
 include(joinpath(pwd(), "tools.jl"))
 

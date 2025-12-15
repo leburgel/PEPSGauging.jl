@@ -1,4 +1,4 @@
-name = "BPAD"
+name = "PEPSGauging"
 uuid = "36bca905-8295-4cda-b053-a76c0c61e6dd"
 authors = ["leburgel <lander.burgelman@gmail.com> and contributors"]
 version = "0.1.0"

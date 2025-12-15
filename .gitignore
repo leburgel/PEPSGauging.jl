@@ -1,2 +1,5 @@
 Manifest*.toml
 dev
+lib
+*.jld2
+*.png

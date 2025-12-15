@@ -17,7 +17,7 @@ using OptimKit
 using KrylovKit
 using Zygote
 using JLD2
-using BPAD
+using PEPSGauging
 
 using PEPSKit: peps_normalize, BeliefPropagation, gauge_fix
 
