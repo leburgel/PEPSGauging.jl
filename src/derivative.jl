@@ -42,6 +42,14 @@ function _rrule(
     return (state_gauged, weights, mcf_env), gaugefix_pullback
 end
 
+# PEPSKit.peps_normalize is not differentiable...
+function _peps_normalize(x::InfinitePEPS)
+    normalized_tensors = map(unitcell(x)) do A
+        return A / norm(A)
+    end
+    return InfinitePEPS(normalized_tensors)
+end
+
 # the 'proper' fixed-point approach, see Fig. 8 of https://arxiv.org/abs/2209.14358
 function _rrule(
         gradmode::LinSolver{:characteristic},
@@ -56,7 +64,10 @@ function _rrule(
     state_gauged, weights, mcf_env = gauge_fix(state, alg, env0, svd_alg)
 
     # get the pullback of the absorption
-    _, absorb_pb = pullback(absorb_mcf_gauge_transform, state, mcf_env)
+    state_gauged_not_normalized, absorb_pb = pullback(absorb_mcf_gauge_transform, state, mcf_env)
+
+    # get the pullback of the normalization
+    _, normalize_pb = pullback(_peps_normalize, state_gauged_not_normalized)
 
     # initialize the partial pullbacks of the fixed point equations
     FP = generate_mcf_fixedpoint(state)
@@ -72,6 +83,7 @@ function _rrule(
 
     # restrict to the pure environment pullback
     vjp_env(x) = fixedpoint_vjp(x)[2]
+    # TODO: extra projection on output?
 
     # restrict to state pullback
     vjp_state(x) = fixedpoint_vjp(x)[1]
@@ -82,17 +94,22 @@ function _rrule(
         Δenv0 = ZeroTangent()
         Δsvd_alg = NoTangent()
 
-        Δstate_gauged, Δweights, Δenv0 = unthunk.(Δx_)
+        Δstate_gauged0, Δweights, Δenv0 = unthunk.(Δx_)
         if Δenv0 isa AbstractZero
             Δenv0 = zerovector.(mcf_env)
         end
 
+        # backpropagate through normalization first
+        Δstate_gauged1, = normalize_pb(Δstate_gauged0)
+
         # get the first part of the state adjoint from the pullback of the absorption
-        Δstate0, Δenv1 = absorb_pb(Δstate_gauged)
+        Δstate0, Δenv1 = absorb_pb(Δstate_gauged1)
 
         # get the second part of the state adjoint from the pullback of the gauge-fixing fixed-point condition
         # first accumulate gauge-fixing environment adjoints
         Δenv = add(Δenv0, Δenv1)
+        # project out anything that shouldn't be there
+        Δenv = _project_input(Δenv)
         # then solve linear problem to invert environment pullback
         Δa, info = reallinsolve(vjp_env, Δenv, Δenv, gradmode.solver_alg)
         if gradmode.solver_alg.verbosity > 0 && info.converged != 1

@@ -24,7 +24,6 @@ import PEPSKit: _rrule, update!
 include("utils.jl")
 include("piracy.jl")
 include("mcf.jl")
-# include("wtg.jl")
 include("fixedpoint.jl")
 include("derivative.jl")
 include("optimization.jl")

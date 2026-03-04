@@ -19,9 +19,9 @@ using MPSKit: randomize!
 using PEPSKit: peps_normalize, gauge_fix, unitcell
 using PEPSGauging: MCF, mcf_environment
 
-sd = 12345
+sd = 12345678
 
-set_blas_threads(16)
+set_blas_threads(8)
 
 # SETUP
 # -----
@@ -30,7 +30,9 @@ lattice = InfiniteSquare(2, 2)
 
 N = 2
 D = 8
-χ = 100
+χ = 200
+χ_start = 20
+χ_step = 20
 
 I = fℤ₂ #symmetry sector
 S = SU2Irrep
@@ -42,8 +44,9 @@ V_halfint = Vect[S](1 / 2 => 1)
 V_env = Vect[S](0 => 10, 1 / 2 => 10);
 
 # set up truncation schemes
-trunc_peps = truncrank(D)
-trunc_env = truncrank(χ)
+trunc_peps = truncrank(D) # used in simple update initialization
+trunc_env = FixedSpaceTruncation() # used in main CTMRG contraction during optimization
+trunc_shuffle = truncrank(χ) # used in reshuffling contraction of the environment space in finalize!
 
 # gauge algorithm settings
 gauge_tol = 1.0e-9
@@ -52,12 +55,12 @@ gauge_verbosity = 2
 
 # contraction algorithm settings
 boundary_tol = 1.0e-9
-boundary_maxiter = 150
+boundary_maxiter = 500
 boundary_verbosity = 2
 
 # gradient algorithm settings
 gradient_tol = 5.0e-8
-gradient_maxiter = 5
+gradient_maxiter = 4
 gradient_krylovdim = 500
 gradient_verbosity = 2
 
@@ -241,7 +244,7 @@ randomize!.(unitcell(psi0))
 # set up custom finalize! function to save data and periodically reshuffle the environment virtual space
 reshuffling_finalize! = generate_reshuffling_finalize(
     boundary_alg,
-    truncrank(χ);
+    trunc_shuffle;
     frequency = 5,
     iters = 10,
     verbosity = 3,
@@ -255,7 +258,7 @@ psi0 = peps_normalize(psi0)
 
 # initialize the environment
 env0 = CTMRGEnv(psi0, V_env)
-for χ_trunc in 40:20:χ
+for χ_trunc in χ_start:χ_step:χ
     ctm_alg_1 = SimultaneousCTMRG(;
         maxiter = 10, verbosity = 3, trunc = truncrank(χ_trunc),
     )

@@ -8,9 +8,10 @@ using OptimKit
 using Zygote
 using LinearAlgebra
 using JLD2
-using PEPSGauging: generate_gauge_preserving_costfunction
 
+using MatrixAlgebraKit: TruncationStrategy
 using PEPSKit: hook_pullback
+using PEPSGauging: generate_gauge_preserving_costfunction
 
 function nogauge_energy_tracker(
         es0::Vector{T}, es1::Vector{T}, ngs::Vector{TR}, H::LocalOperator, env1::CTMRGEnv;
@@ -90,33 +91,6 @@ function generate_heisenberg_filename(
 end
 
 ## Gradient testing things
-
-# function gp_peps_fg(
-#         H;
-#         gauge_alg = PEPSGauging.default_gauge_alg(),
-#         gauge_gradient_alg = nothing,
-#         svd_alg = PEPSGauging.default_svd_alg(),
-#         boundary_alg = PEPSGauging.default_boundary_alg(),
-#         boundary_gradient_alg = PEPSGauging.default_gradient_alg(),
-#         symmetrization = nothing,
-#     )
-#     function fg((peps, boundary_env, gauge_env))
-#         E, gs = withgradient(peps) do ψ
-#             ψg, _, gauge_env´ = hook_pullback(
-#                 gauge_fix, ψ, gauge_alg, gauge_env, svd_alg; alg_rrule = gauge_gradient_alg,
-#             ) # the bamboozle
-#             boundary_env′, = hook_pullback(
-#                 leading_boundary, boundary_env, ψg, boundary_alg;
-#                 alg_rrule = boundary_gradient_alg,
-#             )
-#             return cost_function(ψg, boundary_env′, H)
-#         end
-#         g = only(gs)
-#         symmetrize!(g, symmetrization)
-#         return E, g
-#     end
-#     return fg
-# end
 
 function test_peps_gradient(
         peps,
@@ -282,19 +256,19 @@ function generate_iterative_finalize(
 end
 
 function generate_reshuffling_finalize(
-        boundary_alg, trunc::TruncationScheme; frequency = 5, iters = 5, verbosity = 3
+        boundary_alg, trunc::TruncationStrategy; frequency = 5, iters = 5, verbosity = 3
     )
     reshuffling_boundary_alg = @set boundary_alg.projector_alg.trunc = trunc
     @reset reshuffling_boundary_alg.maxiter = iters
     @reset reshuffling_boundary_alg.miniter = iters
     @reset reshuffling_boundary_alg.verbosity = verbosity
     function reshuffling_finalize!(x, f, g, iter)
-        peps, env = x
         # reshuffle environment
+        boundary_env = x[2]
         if mod(iter, frequency) == 0
-            env, = leading_boundary(env, peps, ctm_alg_shuffle)
+            boundary_env, = leading_boundary(boundary_env, x[1], reshuffling_boundary_alg)
         end
-        return (peps, env), f, g
+        return (x[1], boundary_env, x[3:end]...), f, g
     end
 
     return reshuffling_finalize!

@@ -26,12 +26,12 @@ const MCFEnv{T} = Tuple{T, T} where {T <: BondTensors}
 function mcf_environment(psi::InfinitePEPS)
     Ns = map(eachcoordinate(psi)) do (r, c)
         N = randn(scalartype(psi), north_virtualspace(psi, r, c)' ← north_virtualspace(psi, r, c)')
-        N = N + N'
+        N = project_traceless_hermitian(N)
         return N / norm(N)
     end
     Es = map(eachcoordinate(psi)) do (r, c)
         E = randn(scalartype(psi), east_virtualspace(psi, r, c)' ← east_virtualspace(psi, r, c)')
-        E = E + E'
+        E = project_traceless_hermitian(E)
         return E / norm(E)
     end
     return Ns, Es
@@ -66,8 +66,8 @@ function generate_mcf_costfun(psi::InfinitePEPS)
     function mcf_costfun((Ns, Es))
         f, gs = Zygote.withgradient((Ns, Es)) do (ns, es)
             # project hermitian
-            ns = project_hermitian.(ns)
-            es = project_hermitian.(es)
+            ns = project_traceless_hermitian.(ns)
+            es = project_traceless_hermitian.(es)
             # absorb gauge transform
             psi´ = absorb_mcf_gauge_transform(psi, (ns, es))
             return norm(psi´) # TODO: gradients of norm of unitcell?
@@ -85,6 +85,7 @@ function PEPSKit.gauge_fix(
         svd_alg = nothing, # HACK: match signature
     )
     Ns0, Es0 = env
+    # find the gauge transformation
     mcf_costfun = generate_mcf_costfun(psi)
     (Ns, Es), = optimize(
         mcf_costfun,
@@ -93,6 +94,9 @@ function PEPSKit.gauge_fix(
             32; gradtol = alg.tol, verbosity = alg.verbosity, maxiter = alg.maxiter
         ),
     )
+    # apply it
     psi´ = absorb_mcf_gauge_transform(psi, (Ns, Es))
+    # normalize each PEPS tensor individually afterwards
+    psi´ = peps_normalize(psi´)
     return psi´, nothing, (Ns, Es) # HACK: match signature
 end

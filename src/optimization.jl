@@ -1,6 +1,6 @@
 # gauge-preserving PEPS optimization
 
-default_gauge_alg() = BeliefPropagation(;
+default_gauge_alg() = MCF(;
     tol = 1.0e-6,
     maxiter = 10,
     verbosity = 2,
@@ -82,49 +82,6 @@ function generate_gauge_preserving_costfunction(
     return gp_costfun
 end
 
-# function generate_gauge_preserving_costfunction(
-#         operator::LocalOperator,
-#         gauge_alg::WTG, # this one uses an actual environment, so the steps are a bit different
-#         gauge_gradient_alg,
-#         svd_alg,
-#         boundary_alg,
-#         boundary_gradient_alg,
-#         symmetrization,
-#         gradnorms_unitcell = [],
-#         times = [];
-#         reuse_env = true,
-#     )
-#     function gp_costfun((peps, boundary_env, gauge_env))
-#         start_time = time_ns()
-#         E, gs = withgradient(peps) do ψ
-#             gt = gauge_env[2] # ignore the CTMRGEnv in first position
-#             pre_gauge_boundary_env, = hook_pullback(
-#                 leading_boundary, boundary_env, ψ, boundary_alg;
-#                 alg_rrule = boundary_gradient_alg,
-#             ) # the first bamboozle
-#             gauge_env´ = (pre_gauge_boundary_env, gt)
-#             ψg, _, gauge_env´´ = hook_pullback(
-#                 gauge_fix, ψ, gauge_alg, gauge_env´, svd_alg; alg_rrule = gauge_gradient_alg,
-#             ) # the second bamboozle
-#             boundary_env´ = gauge_env´´[1] # start from this one
-#             boundary_env´′, = hook_pullback(
-#                 leading_boundary, boundary_env´, ψg, boundary_alg;
-#                 alg_rrule = boundary_gradient_alg,
-#             )
-#             ignore_derivatives() do
-#                 reuse_env && (update!(boundary_env, boundary_env´′); update!(gauge_env, gauge_env´´))
-#             end
-#             return cost_function(ψg, boundary_env´′, operator)
-#         end
-#         g = only(gs)  # `withgradient` returns tuple of gradients `gs`
-#         symmetrize!(g, symmetrization)
-#         push!(gradnorms_unitcell, norm.(g.A))
-#         push!(times, (time_ns() - start_time) * 1.0e-9)
-#         return E, g
-#     end
-#     return gp_costfun
-# end
-
 # just because the original one is not general enough...
 function gauge_preserving_fixedpoint(
         operator,
@@ -169,7 +126,8 @@ function gauge_preserving_fixedpoint(
         boundary_gradient_alg,
         symmetrization,
         gradnorms_unitcell,
-        times,
+        times;
+        reuse_env,
     )
 
     (peps_final, env_final), cost_final, ∂cost, numfg, convergence_history = optimize(

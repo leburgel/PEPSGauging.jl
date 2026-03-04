@@ -1,5 +1,7 @@
 """
-Benchmark BP-gauge-fixed optimization on the square lattice Heisenberg model.
+Benchmark MCF-gauge-fixed optimization on the square lattice Heisenberg model.
+
+Using fixed-point differentiation of the MCF gauge.
 """
 
 using Revise
@@ -18,19 +20,19 @@ include(joinpath(pwd(), "tools.jl"))
 using PEPSKit: peps_normalize, BeliefPropagation, gauge_fix
 using PEPSGauging: MCF, mcf_environment
 
-# sd = 1234 # trial 1
-# sd = 123456 # trial 2
 sd = 12345678 # trial 3
 BLAS.set_num_threads(4) # be a bit conservative
 
 # SETUP
 # -----
 
+lattice = InfiniteSquare(1, 1)
+
 T = ComplexF64
 D = 3
 chi = 20
 chi1 = 50
-symmetrization = nothing # RotateReflect()
+symmetrization = nothing
 reuse_env = true
 Jx = -1.0
 Jy = 1.0
@@ -40,18 +42,18 @@ gauge_tol = 1.0e-10
 gauge_maxiter = 500
 gauge_verbosity = 2
 
-boundary_tol = 1.0e-11
+boundary_tol = 1.0e-10
 boundary_maxiter = 500
 boundary_verbosity = 2
 
-fpgrad_tol = 1.0e-7
+fpgrad_tol = 1.0e-8
 fpgrad_verbosity = 2
 
 optim_tol = 1.0e-9
 optim_verbosity = 3
-optim_maxiter = 1200
+optim_maxiter = 700
 
-H = heisenberg_XYZ(InfiniteSquare(); Jx, Jy, Jz)
+H = heisenberg_XYZ(lattice; Jx, Jy, Jz)
 
 P = H.lattice
 Vpeps = fill(ComplexSpace(D), size(P)...)

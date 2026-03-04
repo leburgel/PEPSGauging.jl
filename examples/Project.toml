@@ -1,12 +1,14 @@
 [deps]
 Accessors = "7d9f7c33-5ae7-4f3b-8dc6-eff91059b697"
-PEPSGauging = "36bca905-8295-4cda-b053-a76c0c61e6dd"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
 MPSKit = "bb1c41ca-d63c-52ed-829e-0820dda26502"
 MPSKitModels = "ca635005-6f8c-4cd1-b51d-8491250ef2ab"
+MathTeXEngine = "0a4f8689-d25c-4efe-a92b-7142dfc1aa53"
+MatrixAlgebraKit = "6c742aac-3347-4629-af66-fc926824e5e4"
 OptimKit = "77e91f04-9b3b-57a6-a776-40b61faaebe0"
+PEPSGauging = "36bca905-8295-4cda-b053-a76c0c61e6dd"
 PEPSKit = "52969e89-939e-4361-9b68-9bc7cde4bdeb"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
@@ -15,6 +17,6 @@ VectorInterface = "409d34a3-91d5-4945-b6ec-7529ddf182d8"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [sources]
-PEPSGauging = {path = ".."}
 OptimKit = {rev = "lb/hack_backtracking", url = "https://github.com/leburgel/OptimKit.jl"}
-PEPSKit = {rev = "bp_ad", url = "https://github.com/QuantumKitHub/PEPSKit.jl"}
+PEPSGauging = {path = ".."}
+PEPSKit = {rev = "master", url = "https://github.com/QuantumKitHub/PEPSKit.jl"}

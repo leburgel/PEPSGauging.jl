@@ -42,7 +42,7 @@ fpgrad_verbosity = 2
 
 optim_tol = 1.0e-8
 optim_verbosity = 3
-optim_maxiter = 600
+optim_maxiter = 700
 
 H = heisenberg_XYZ(InfiniteSquare(); Jx, Jy, Jz)
 
