@@ -93,7 +93,6 @@ function generate_mcf_costfun(psi::InfinitePEPS)
     return mcf_costfun
 end
 
-_
 function PEPSKit.gauge_fix(
         psi::InfinitePEPS,
         alg::MCF,
