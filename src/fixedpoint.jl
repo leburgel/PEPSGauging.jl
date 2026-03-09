@@ -8,12 +8,6 @@
 # MCF gauging fixed-point equations
 #
 
-function _project_input(env::MCFEnv)
-    Ns = map(project_traceless_hermitian, env[1])
-    Es = map(project_traceless_hermitian, env[2])
-    return Ns, Es
-end
-
 # just Fig. 8 of https://arxiv.org/abs/2209.14358 for the single-site unit cell case
 # for the general case, I just guessed the stupidest modification, and it seems to work?
 function generate_mcf_fixedpoint(statefp::InfinitePEPS)

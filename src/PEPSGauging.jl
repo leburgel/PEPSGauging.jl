@@ -1,5 +1,6 @@
 module PEPSGauging
 
+using LinearAlgebra
 using TensorKit
 using PEPSKit
 using ChainRulesCore

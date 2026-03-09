@@ -42,12 +42,8 @@ function _rrule(
     return (state_gauged, weights, mcf_env), gaugefix_pullback
 end
 
-# PEPSKit.peps_normalize is not differentiable...
-function _peps_normalize(x::InfinitePEPS)
-    normalized_tensors = map(unitcell(x)) do A
-        return A / norm(A)
-    end
-    return InfinitePEPS(normalized_tensors)
+function _global_normalize(psi::InfinitePEPS)
+    return psi / (norm(psi) / sqrt(length(psi)))
 end
 
 # the 'proper' fixed-point approach, see Fig. 8 of https://arxiv.org/abs/2209.14358
@@ -67,7 +63,7 @@ function _rrule(
     state_gauged_not_normalized, absorb_pb = pullback(absorb_mcf_gauge_transform, state, mcf_env)
 
     # get the pullback of the normalization
-    _, normalize_pb = pullback(_peps_normalize, state_gauged_not_normalized)
+    _, normalize_pb = pullback(_global_normalize, state_gauged_not_normalized)
 
     # initialize the partial pullbacks of the fixed point equations
     FP = generate_mcf_fixedpoint(state)
@@ -82,7 +78,12 @@ function _rrule(
     _, fixedpoint_vjp = pullback(FP, state, mcf_env)
 
     # restrict to the pure environment pullback
-    vjp_env(x) = fixedpoint_vjp(x)[2]
+    function vjp_env(x)
+        out = fixedpoint_vjp(x)[2]
+        # HACK: have to fudge the scalartype so KrylovKit doesn't complain...
+        return (out[1:2]..., complex(out[3]))
+    end
+
     # TODO: extra projection on output?
 
     # restrict to state pullback
@@ -110,6 +111,8 @@ function _rrule(
         Δenv = add(Δenv0, Δenv1)
         # project out anything that shouldn't be there
         Δenv = _project_input(Δenv)
+        # HACK: have to fudge the scalartype so KrylovKit doesn't complain...
+        Δenv = (Δenv[1:2]..., complex(Δenv[3]))
         # then solve linear problem to invert environment pullback
         Δa, info = reallinsolve(vjp_env, Δenv, Δenv, gradmode.solver_alg)
         if gradmode.solver_alg.verbosity > 0 && info.converged != 1
